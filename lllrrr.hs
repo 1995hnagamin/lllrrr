@@ -4,7 +4,7 @@ import qualified Text.Parsec.Token as P
 import Text.Parsec.Expr
 import Text.Parsec.Language (haskellDef)
 import Control.Monad.Identity
-import Control.Monad.State
+import qualified Control.Monad.State as S
 import Data.List
 import Data.Char
 
@@ -25,7 +25,7 @@ data Term = Variable Identifier
 instance Show (Term) where
     show (Variable v) = showIdentifier v
     show (Lambda x m) = "(\\" ++ showIdentifier x ++ " " ++ show m ++ ")"
-    show (App m n) = (show m) ++ " " ++ (show n)
+    show (App m n) = "(" ++ (show m) ++ " " ++ (show n) ++ ")"
 
 -- lexer
 
@@ -64,6 +64,14 @@ parseLambdaExpr = do
 parseExpr :: Parser Term
 parseExpr = parseLambdaExpr <|> parseApp
 
+parseDeclare :: Parser (Identifier, Term)
+parseDeclare = do
+    string "*"
+    name <- identifier
+    string "="
+    body <- parseExpr
+    return $ ((name,0), body)
+
 -- eval
 
 fv :: Term -> [Identifier]
@@ -91,18 +99,36 @@ eval (Lambda x m)         = Lambda x $ eval m
 eval (App m@(App (Variable _) _) n)  = App (eval m) $ n
 eval (App m@(App _ _) n)  = eval (App (eval m) $ n)
 eval (App (Lambda x m) n) = eval $ subst m x $ eval n
-eval (App m n) = App m n
+eval (App m n) = App m (eval n)
 
 -- substitution
 data Statement = Substitution Identifier Term
                | Expression Term
+type Program = [Statement]
+type Record = (Identifier, Term)
+type Environment = [Record]
+data ReturnValue = RVoid ()
+                 | RTerm Term
 
-type Program = State [(Identifier, Term)] Statement
+declare :: Record -> S.State Environment ReturnValue
+declare pair = S.state $ \pairs -> (RVoid (), pair:pairs)
 
-exec :: Statement -> Program
-exec (Substitution x m) = 
+apply :: Term -> S.State Environment ReturnValue
+apply term = S.state $ \pairs -> (RTerm $ term' pairs, pairs)
+    where
+        term' pairs = foldr (\(name,body) t -> subst t name body) term pairs
+
+execProgram :: Program -> Environment
+execProgram ss = snd $ S.runState (foldr1 (>>) $ map f ss) []
+    where
+        f (Substitution name t) = declare (name, t)
+        f (Expression t) = apply t       
 
 -- exec
+
+parseTerm :: String -> Either ParseError Term
+parseTerm = parse parseExpr "lllrrr"
+
 
 main :: IO()
 main = do
@@ -111,3 +137,4 @@ main = do
         Left err -> putStrLn . show $ err
         Right x  -> do
             putStrLn . show . eval $ x
+
