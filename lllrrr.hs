@@ -107,8 +107,11 @@ data ReturnValue = RVoid ()
 parseSubst :: Parser Statement
 parseSubst = do
     char '*'
+    optionalSpace
     name <- identifier
+    optionalSpace
     char '='
+    optionalSpace
     body <- parseExpr
     return $ Substitution ((name,0), body)
 
@@ -124,13 +127,19 @@ addRecord r@(name,term) (r'@(name',term'):rs)
     | name == name' = r:rs
     | otherwise     = r':(addRecord r rs)
 
---declare :: Record -> S.State Environment ReturnValue
-declare pair = S.state $ \pairs -> (RVoid (), addRecord pair pairs)
+declare :: Record -> S.State Environment ReturnValue
+declare (name, t) = S.state $ 
+    \pairs -> (RVoid (), addRecord (name, eval $ f pairs) pairs)
+        where
+            f pairs = foldl (\t (n,b) -> subst t n b) t pairs
 
 apply :: Term -> S.State Environment ReturnValue
-apply term = S.state $ \pairs -> (RTerm $ term' pairs, pairs)
+apply term = S.state $ \pairs -> (RTerm $ eval $ f pairs, pairs)
     where
-        term' pairs = foldr (\(name,body) t -> subst t name body) term pairs
+        f = foldl (\t (name, body) -> subst t name body) term
+
+modifyenv (Substitution r) = declare r
+modifyenv (Expression t) = apply t       
 
 execProgram :: Program -> Environment
 execProgram ss = snd $ S.runState (foldr1 (>>) $ map f ss) []
@@ -138,8 +147,8 @@ execProgram ss = snd $ S.runState (foldr1 (>>) $ map f ss) []
         f (Substitution r) = declare r
         f (Expression t) = apply t       
 
-readProgram :: [Either ParseError Term] -> Either ParseError [Term]
-readProgram = sequence
+readProgram :: [Either ParseError Statement] -> Either ParseError Environment
+readProgram ss = sequence ss >>= (return . execProgram)
 
 -- exec
 
@@ -147,4 +156,6 @@ main :: IO()
 main = do
     input <- getContents
     let stmts = map (parse parseStmt "lllrrr") $ lines input
-    mapM_ (putStrLn . show) stmts
+    let env   = readProgram stmts
+    putStrLn . show $ env
+
