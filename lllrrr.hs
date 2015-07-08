@@ -64,14 +64,6 @@ parseLambdaExpr = do
 parseExpr :: Parser Term
 parseExpr = parseLambdaExpr <|> parseApp
 
-parseDeclare :: Parser (Identifier, Term)
-parseDeclare = do
-    string "*"
-    name <- identifier
-    string "="
-    body <- parseExpr
-    return $ ((name,0), body)
-
 -- eval
 
 fv :: Term -> [Identifier]
@@ -102,16 +94,38 @@ eval (App (Lambda x m) n) = eval $ subst m x $ eval n
 eval (App m n) = App m (eval n)
 
 -- substitution
-data Statement = Substitution Identifier Term
+data Statement = Substitution (Identifier, Term)
                | Expression Term
+               deriving (Show)
 type Program = [Statement]
 type Record = (Identifier, Term)
 type Environment = [Record]
 data ReturnValue = RVoid ()
                  | RTerm Term
+                 deriving (Show)
 
-declare :: Record -> S.State Environment ReturnValue
-declare pair = S.state $ \pairs -> (RVoid (), pair:pairs)
+parseSubst :: Parser Statement
+parseSubst = do
+    char '*'
+    name <- identifier
+    char '='
+    body <- parseExpr
+    return $ Substitution ((name,0), body)
+
+parseValue :: Parser Statement
+parseValue = liftM Expression parseExpr
+
+parseStmt :: Parser Statement
+parseStmt = parseSubst <|> parseValue
+
+addRecord :: Record -> Environment -> Environment
+addRecord r@(name,term) [] = [r]
+addRecord r@(name,term) (r'@(name',term'):rs)
+    | name == name' = r:rs
+    | otherwise     = r':(addRecord r rs)
+
+--declare :: Record -> S.State Environment ReturnValue
+declare pair = S.state $ \pairs -> (RVoid (), addRecord pair pairs)
 
 apply :: Term -> S.State Environment ReturnValue
 apply term = S.state $ \pairs -> (RTerm $ term' pairs, pairs)
@@ -121,20 +135,24 @@ apply term = S.state $ \pairs -> (RTerm $ term' pairs, pairs)
 execProgram :: Program -> Environment
 execProgram ss = snd $ S.runState (foldr1 (>>) $ map f ss) []
     where
-        f (Substitution name t) = declare (name, t)
+        f (Substitution r) = declare r
         f (Expression t) = apply t       
+
+readProgram :: [Either ParseError Term] -> Either ParseError [Term]
+readProgram = sequence
 
 -- exec
 
-parseTerm :: String -> Either ParseError Term
-parseTerm = parse parseExpr "lllrrr"
-
-
 main :: IO()
 main = do
+    input <- getContents
+    let stmts = map (parse parseStmt "lllrrr") $ lines input
+    mapM_ (putStrLn . show) stmts
+    
+{-
     str <- getLine :: IO String
     case parse parseExpr "lllrrr" str of 
         Left err -> putStrLn . show $ err
         Right x  -> do
             putStrLn . show . eval $ x
-
+-}
