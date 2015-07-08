@@ -1,0 +1,17 @@
+# boolean
+* TRUE  = \xy.x
+* FALSE = \xy.y
+
+* AND = \pq.p q FALSE
+* OR  = \pq.p TRUE q
+* NOT = \p.p FALSE TRUE
+* IFTHENELSE = \pxy.pxy
+
+IFTHENELSE (AND (NOT FALSE) (OR TRUE FALSE)) YES NO
+
+# list
+* CONS = \xyf.fxy
+* CAR  = \p.p TRUE
+* CDR  = \p.p FALSE
+
+CAR (CONS TRUE FALSE)
