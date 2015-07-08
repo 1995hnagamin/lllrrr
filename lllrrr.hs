@@ -148,11 +148,3 @@ main = do
     input <- getContents
     let stmts = map (parse parseStmt "lllrrr") $ lines input
     mapM_ (putStrLn . show) stmts
-    
-{-
-    str <- getLine :: IO String
-    case parse parseExpr "lllrrr" str of 
-        Left err -> putStrLn . show $ err
-        Right x  -> do
-            putStrLn . show . eval $ x
--}
